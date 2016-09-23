@@ -1,0 +1,239 @@
+---
+title: "Tornadoes in Texas 2011-2015"
+output: html_document
+---
+Tornadoes are very destructive weather events that can cause deaths and much property damage. Their severity are measured on the enhanced Fujita scale:
+
+F Scale | Speed 
+--------|-------------------
+EF0     | 65-85 mph (light damage)
+EF1     | 86-110 mph (moderate damage)
+EF2     | 111-135 mph (considerable damage)
+EF3     | 136-165 mph (severe damage)
+EF4     | 166-200 mph (devastating damage)
+EF5     | > 200 mph (incredible damage)
+
+
+In which months do tornadoes tend to occur? What time? Is there a pattern to where the strongest tornadoes occur?
+
+
+We will investigate tornadoes in the state of Texas from January 1, 2011 through December 31, 2015. The data, in the file **tornadoes11-15.txt**, were obtained from the Storm Events Database at the National Centers for Environmental Information [www.ncdc.noaa.gov](www.ncdc.noaa.gov)
+
+
+We will need the packages `stringr`, `lubridate`, `ggplot2`, `dplyr` and `plyr` for this lab:
+
+
+```{r, message = FALSE}
+for (package in c("stringr", "lubridate", "ggplot2", "plyr", "dplyr")){
+  library(package, character.only = TRUE)
+}
+
+```
+
+
+The values in the variable `BeginTime` (the time the tornado began) in the text  file are quoted because some of the times have leading zeros (for example, "0305" for 3:05 am). However, even with the double quotes, R infers that this column is numeric and strips off the leading zeros. We will use the `colClasses` argument to `read.table` to force R to read this variable as a character variable.
+
+
+```{r}
+tornadoes <- read.table("data/TxTornadoes11-15.txt",   
+        colClasses=c(Fscale = "factor", Source = "factor", 
+        BeginTime="character"), stringsAsFactors = FALSE, 
+        header = TRUE, sep = ",")
+
+dim(tornadoes)
+```
+
+
+There were 620 tornadoes recorded in this time frame.
+
+### Extracting the time information
+
+
+The date (`BeginDate`) and time (`BeginTime`) of the tornadoes are given as separate variables so we will combine them into one variable. In addition, the time variable will also need to be converted into the hh:mm:ss format.
+
+
+The `BeginTime` variable has the hour and minute information of when the tornado began, but without the ":" separator. We will use the `str_sub` command from the `stringr` package to extract the hours and minutes portion from this variable and then use the base R command `paste` to glue them back together with the ":" separator.
+
+
+```{r}
+head(tornadoes$BeginTime)
+temp1 <- str_sub(tornadoes$BeginTime, 1, 2)  
+head(temp1)
+
+temp2 <- str_sub(tornadoes$BeginTime, 3, 4)  
+head(temp2)
+
+temp3 <- paste(temp1, ":", temp2, ":", "00", sep = "")
+head(temp3)
+
+temp4 <- paste(tornadoes$BeginDate, temp3, sep = " ")
+head(temp4)
+
+temp5 <- mdy_hms(temp4)
+head(temp5)
+tornadoes$DateTime <- temp5
+```
+
+**Remark** All the times in the data set were given in Central Standard Time (CST). For the purposes of this lab, ignore the default UTC designation in the output.
+
+### When do tornadoes occur?
+
+When do most tornadoes occur? Do they tend to occur in the same months from year to year? To answer this, we can use base R and `ggplot2` commands which can handling date objects.
+
+
+```{r}
+
+tornadoes$Month <- month(tornadoes$DateTime, label = TRUE)
+ggplot(tornadoes, aes(Month)) + geom_bar()
+
+table(tornadoes$Month)
+
+tornadoes$Year <- year(tornadoes$DateTime)
+ggplot(tornadoes, aes(x=as.factor(Year))) + geom_bar(aes(fill =Month), position = "fill") 
+
+```
+
+Thus, we see that of the 620 tornadoes that occurred over this 5 year period, 240 tornados occurred in May and only 5 occurred in September. From the graph, we see that the proportion of a year's tornados that occur in a given month is not consistent year to year. For example, in this data set, 2015 had a higher fraction of December tornadoes than in other years. 
+
+
+**Remark** 
+To compute proportions instead of counts, use the `prop.table` command. For example
+
+```{r}
+prop.table(table(tornadoes$Year, tornadoes$Month), 1)
+```
+
+
+What time did these tornadoes occur? Do they tend to occur in certain periods of the day?
+
+
+```{r}
+TorTime <- hour(tornadoes$DateTime)
+head(TorTime)
+
+tornadoes$TimeOfDay <- cut(TorTime, breaks=c(0,6,12,18, 24), include.lowest = TRUE)
+
+ggplot(tornadoes, aes(TimeOfDay)) + geom_bar()
+prop.table(table(tornadoes$TimeOfDay))
+```
+
+
+Thus, we can see that most of the tornadoes (nearly 60%) in this time period occurred between noon and midnight. 
+
+**Remark** The `cut` command creates a factor variable from a numeric variable by placing each value into an interval determined the `breaks` argument.
+
+
+### How strong were the tornadoes?
+
+
+How strong were the tornadoes that hit Texas? Is there any relationship between strength of tornado and time of occurrence?
+
+
+```{r}
+ggplot(tornadoes, aes(x = Fscale)) + geom_bar()
+
+prop.table(table(tornadoes$Fscale, tornadoes$TimeOfDay), 1)
+```
+
+We see that most tornadoes in Texas were EF0.
+About 43.3% of EF1 tornadoes occurred between noon and 6pm, while 27.6% of them occurred between 6pm and midnight. 
+
+
+Other common operations work on dates also. For instance, suppose we want to know what fraction of the tornadoes in this data set occurred after June 30, 2014. 
+
+
+```{r}
+AfterJune30 <- tornadoes$DateTime > mdy_hms("06-30-2014 23:59:59")
+head(AfterJune30)
+mean(AfterJune30)
+```
+
+About 43.2% of tornadoes in this data set occurred after June 30, 2014.
+
+
+
+### Mapping the tornadoes
+
+We can visualize the occurrences of tornadoes on a map. First, some preparation.
+
+
+The enhanced Fujita scale variable, `Fscale` is a factor variable but we need a numeric version for one of the `ggplot2` commands. We will use the `plyr` package to map the levels of this variable to the numeric values 0, 1, 2, 3, 4.
+
+
+```{r}
+tornadoes$F2 <- as.numeric(mapvalues(tornadoes$Fscale, from = levels(tornadoes$Fscale), to = 0:4))
+```
+
+
+Now, we will use the command `map_data` from `ggplot2` to get the outline for the state of Texas. We will store this portion of the plot in the R object `p`.
+
+
+```{r, message = FALSE}
+Txmap <- map_data("state", region="Texas")
+
+p <- ggplot(tornadoes) + 
+     geom_polygon(data = Txmap, aes(x=long, y = lat),  
+       fill="wheat")
+
+p
+```
+
+
+Now, we will plot the latitude and longitude of where each tornado began. Since we want to add a layer to the Texas map, we will reuse the gg object `p` created above.
+
+
+```{r}
+p + geom_point(aes(x = BeginLon, y = BeginLat, size = F2,   color=Fscale)) + 
+  labs(x = "longitude", y = "latitude", size = "Fscale") +  scale_size_continuous(labels=c("EF0", "EF1", "EF2", "EF3", "EF4"))
+```
+
+
+Is there is any spatial pattern to when the tornadoes occurred?
+
+
+```{r}
+p + geom_point(aes(x = BeginLon, y = BeginLat, color=Month))
+
+```
+The tornadoes that occurred October through January appear to be clustered towards the eastern border of the state. 
+
+
+We saw earlier that most tornadoes were either EF0 or EF1 on the enhanced Fujita scale. Let's map where the more severe tornadoes occurred.
+
+
+```{r}
+severeTorn <- filter(tornadoes, Fscale=="EF2" | Fscale=="EF3"| Fscale=="EF4")   
+
+p <- ggplot(severeTorn) + 
+    geom_polygon(data = Txmap, aes(x=long, y = lat), fill="wheat")    #recreate Texas map
+
+p + geom_point(aes(x=BeginLon, y = BeginLat), size = .5) +
+  geom_text(aes(x=BeginLon, y = BeginLat, label = BeginLocation), size = 1.5, vjust = 1)  
+
+last_plot() + 
+ labs(x="longitude", y = "latitude") +
+ ggtitle("Severe tornadoes")
+```
+
+
+**Remark** The `vjust` argument to `geom_text` shifts the label up or down from the point.
+
+
+
+### On Your Own
+
+1. Create a plot to explore the distribution of the log of property damage (`PropertyDamage`) by the F scale. Note that there are many zeros, so add 1 to the property damage variable before taking the log.
+
+2. Is there any geographic pattern to who (storm chasers, the public, etc.) reports the tornado (variable `Source`)?
+
+
+3. The file **FlLightning10-15.txt** contains data on lightning strikes in Florida between 2010 and 2015. A lightning strike was recorded if there was any property or crop damage, or injuries or deaths (either direct or indirect). This file is comma delimited and the variable `Time` should be imported as character and `Source` as factor.
+
+  + In which months did most of the lightning strike occur? Time of day?
+ 
+  + What proportion of lightning strikes in this data set occurred before March 14, 2013?
+
+  + Is there any spatial pattern to where the lightning strikes occurred?
+
+
+4. The default color palettes used by `ggplot2` may not be optimal, especially for those who are color-blind. Explore the package `dichromat`. See [https://www.r-bloggers.com/choosing-colour-palettes-part-i-introduction/](https://www.r-bloggers.com/choosing-colour-palettes-part-i-introduction/).

@@ -1,0 +1,154 @@
+---
+title: "Oklahoma Quakes"
+output: html_document
+---
+
+The number of earthquakes in Oklahoma has increased in the past decade. In fact, scientists now claim that Oklahoma surpasses California in being the "earthquake capital of the world!"
+[http://www.wfaa.com/news/local/investigates/oklahoma-earthquakes/143828814](http://www.wfaa.com/news/local/investigates/oklahoma-earthquakes/143828814)
+
+
+In this case study, we will examine data obtained from the U. S. Geological Survey (USGS) on earthquakes in Oklahoma since 2000 [http://earthquake.usgs.gov/earthquakes/search/](http://earthquake.usgs.gov/earthquakes/search/)
+
+
+We will utilize several packages for this lab.
+
+
+```{r, message = FALSE}
+for (package in c("stringr", "lubridate", "dplyr", "ggplot2")){
+  library(package, character.only = TRUE)
+}
+
+```
+
+
+The data are in the file **OKEarthquakes.csv**. 
+
+
+```{r}
+OKquakes <- read.csv("data/OKEarthquakes.csv", stringsAsFactors = FALSE)
+head(OKquakes)
+summary(OKquakes)
+```
+
+
+The `place` variable describes the location of the earthquakes. Notice that in this data set, there are several earthquakes that are outside of OKlahoma; for example, the second earthquake in the data set took place in Kansas.
+
+
+We will need to extract just those observations that are in Oklahoma.
+
+
+```{r}
+out <- str_detect(OKquakes$place, "Oklahoma")
+head(out)
+
+OK <- filter(OKquakes, out) #filter from dplyr package
+dim(OK)
+```
+
+
+Notice that in the `time` variable, the date is given first, followed by a T, then the time (ex. "2015-12-31T20:31:14.300Z"). The International Organization for Standardization (IS) specifies this format in ISO 8601, the international standard for representing times and dates. The Z designation after the time indicates that the time is UTC (Cordinated Universal Time, or Zulu time). We will extract the date information using commands from `stringr` and `lubridate`.
+
+
+```{r}
+#str_split from stringr
+out <- str_split(OK$time, "T")
+head(out) 
+```
+The object `out` is a list and each component of this list is a vector with two elements, the date and the time. 
+
+
+```{r}
+times <- sapply(out, "[[", 1)   
+head(times)
+```
+The `sapply` command takes the name of the list as its first argument. The second argument is a function to apply to this list; here we want each component of this list (specified by the `[[`), and then the first element of each component (the `1`).
+
+
+We will now isolate the month and the year of occurrence of each earthquake using commands from the `lubridate` package.
+
+
+```{r}
+OK$year <- year(times)
+OK$month <-month(times)
+table(OK$year)
+```
+Clearly, the number of earthquakes in Oklahoma is increasing!
+
+
+The USGS classifies earthquakes by the magnitude. Quakes with magnitude between 2.0 and 2.9 are considered "very minor," quakes with magnitude between 3 and 3.9 are "minor," between 4 and 4.9, "light," and between 5 and 5.9, "moderate." Is there a relationship between the magnitude of the earthquake and year?
+
+
+```{r}
+sort(unique(OK$mag))
+
+cutoff <- c(2.0, 2.9, 3.9, 4.9, 5.9)
+
+OK$type <- cut(OK$mag, breaks = cutoff, labels = c("very minor", "minor", "light", "moderate" ))
+
+table(OK$type)
+
+table(OK$type, OK$year)
+```
+Most of the earthquakes have been very minor or minor. There were no earthquakes classified as "light" from 2000 to 2009, but then several "light" ones occurred since 2010.
+
+
+We will use the `ggplot2` package to visualize the table just created:
+
+
+```{r}
+ggplot(OK, aes(x=year)) + geom_bar(aes(fill = type))
+```
+
+
+Has there been a change in the depth of these earthquakes?
+
+
+```{r}
+ggplot(OK, aes(x=year, y = depth)) + geom_point()
+```
+
+We can definitely see the change in variability of the depth of earthquakes starting in 2010.
+
+
+Where are these earthquakes in Oklahoma occurring? We have information on the exact location of these earthquakes so we will map this data.  First, we will use the `map_data` command from `lubridate` to extract the boundaries of Oklahoma and then create a map of the state.
+
+
+```{r, message = FALSE}
+OKmap <- map_data("state", region="Oklahoma")
+
+p <- ggplot(OK) + geom_polygon(data = OKmap, aes(x=long, y = lat), fill="wheat")
+p
+```
+
+Next, we add the location of the earthquakes and color-code these by the year of occurrence.
+
+
+```{r}
+p + geom_point(aes(x = longitude, y = latitude, color = year))
+```
+
+Another way to incorporate the year data is by using `facet_wrap`:
+
+
+```{r}
+p + geom_point(aes(x = longitude, y = latitude), size = .8) + facet_wrap(  ~ year) + labs(x = "longitude", y = "latitude")
+
+```
+
+### On Your own
+
+### 
+
+1. The package `RColorBrewer` provides a sequential color palette. Investigate this palette and recreate the maps using one of these.
+
+
+2. The file **CalifQuakes.csv** contains data on earthquakes in a rectangular region around California from January 1, 2010 through the end of 2015. 
+
+
+   +  Extract those quakes that occurred just in California. Notice that some observations specify a California location by "CA" while others use "California".
+
+   + Investigate when earthquakes have been occurring in California. Has the distribution of the number of earthquakes been uniform across months? across years?
+
+   + Is there a pattern to where earthquakes in California occur?
+
+ + How severe have the earthquakes in California been? Are most of minor severity?

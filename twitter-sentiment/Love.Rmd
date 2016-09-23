@@ -1,0 +1,167 @@
+---
+title: "2016 Twitter"
+output: html_document
+---
+Twitter is a popular social media network in which users can send and receive short 140-character messages ("tweets") on any topic they wish. We have collected 5000 tweets from Twitter on 27 June 2016, searching on the word "love." 
+
+
+We will show how regular expressions and the package `stringr` can be used to analyze the text in this data set.
+
+
+```{r}
+library(stringr)
+```
+
+
+We will import the text file **love.txt** using the `scan` command. We specify that each line is a character string using the argument `what =""`
+
+
+```{r}
+love <- scan("data/love.txt", what = "")
+head(love)
+
+```
+
+
+How many of these tweets mention the word "heart"?
+
+
+```{r}
+out <- str_detect(love, "heart")
+head(out)
+head(love[out])
+sum(out)  
+```
+
+Thus, 114 tweets contain "heart".
+But did we detect all tweets that had the word "heart?" What if the tweeter writes "Heart" or HEART" or uses some other combination of upper and lower case letters? 
+
+
+```{r}
+out2 <- str_detect(love, "[Hh][Ee][Aa][Rr][Tt]")
+sum(out2)
+```
+
+So there were only 6 additional tweets that had some capitalization in some of the letters in the word "heart".
+
+
+To specify an "or", use the vertical bar. For instance, to find the number of tweets that mentions either "boy" or "girl"
+
+
+```{r}
+out3 <- str_detect(love, "boy|girl")
+sum(out3)
+```
+
+
+
+The word "you" comes up frequently in tweets, often being mentioned more than once in a given tweet. Suppose we wish to count all occurrences of "you".
+
+
+```{r}
+out4 <- str_locate_all(love, "[Yy][Oo][Uu]")
+head(out4)
+head(unlist(out4))
+```
+
+The R object `out4` is a list. The `unlist` command creates a vector from the list. For instance, in the third tweet, "you" occurs in positions 62-64, 80-82, and 98-100. When you apply `unlist` to `out4`, these values appear in the vector as 62 80 90 64 82 100 (start positions first, followed by end positions).
+
+Now, in `unlist(out4)`, the start and ending position of every occurrence of "you" is given. To find the total number of occurrences of "you", we must divide by 2.
+
+```{r}
+length(unlist(out4))/2
+```
+
+So of the 5000 tweets in this file, the word "you" occurred 3229 times.
+
+
+Now, of the tweets in the file, how many were retweets? We need to count the number of tweets that start out with the letters "RT". 
+
+
+```{r}
+out5 <- str_detect(love, "^RT")
+sum(out5)
+```
+
+
+Suppose we wish to count the number of times hashtags are used in the tweets. We need to match the pattern "#" followed by some characters. In particular, the hashtag character "#" cannot be followed by a space. The expression "\\S" indicates 'not a space' while a "+" following it will specify one or more instances of "not a space":
+
+```{r}
+out6 <- str_locate_all(love, "#\\S+")
+length(unlist(out6))/2
+```
+
+
+Now, many tweets contain web addresses. The URL's start with "http" or "https" followed immediately by "://" and then more characters. So, after "http" we need to indicate either 0 or 1 occurrence of the "s". This is done using "s?" After the double forward slashes, we match zero or more occurrences of any character.
+
+
+```{r}
+outURLS <- str_extract_all(love, "http(s?)(://).*")
+head(outURLS)    #a list
+head(unlist(outURLS))
+```
+
+
+Many users include special characters in their tweets such as emojis, foreign symbols, etc. However, when these tweets are exported to a text file, these symbols are replaced by their unicode number, a universal standard for encoding special characters. For instance, take a look at the 12th and 195th tweets in this data file:
+
+
+```{r}
+love[c(12, 195)]   
+```
+
+
+`<U+2764`> is the unicode notation for a (heavy) heart while `<U+2606>` is unicode for a white star. You can type the unicode value into any web search engine to see the actual symbol.
+
+
+Suppose we wish to clean up the file by removing all the unicode values. For each "<", we need to find the matching ">". The pattern "[^<]*" is used to match any character except "<" zero or more times. We replace this pattern with a space.
+
+
+```{r}
+out7 <- str_replace_all(love, "<[^<]*>", " ")
+out7[c(12, 195)]
+```
+
+To remove the *, (,  ) and `, we will need to enclose them in brackets since these are meta-characters.
+
+
+```{r}
+out8 <- str_replace_all(out7, "[*()`]", " ")
+head(out8)
+out7[c(12, 195)]
+```
+
+
+We can also remove extra whitespace in the text. We will replace one or more occurrences of a space (`\\s+`) with just a single space.
+
+
+```{r}
+out9 <- str_replace_all(out8, "\\s+", " ")
+head(out9)
+out9[c(12, 195)]
+```
+
+### Own your own
+
+1. How many tweets in `love` contain the phrase "love you"?
+
+2. How many mentions (of specific users) are there in the `love` tweets? Mentions are prefaced by the "at" symbol, for example, `@username`.
+
+3. The third installment of the movie franchise "Ghostbusters" was released on July 15, 2016. 
+Import (via 'scan') the file **Ghostbusters.txt88 that has 5000 tweets downloaded from Twitter on July 18, 2016, based on a search of the word "ghostbusters". 
+
+
+   * Clean up the data set by removing the unicode values.
+
+   * How many mentions are there of the word "fun"?
+
+   * How many of the 5000 tweets are retweets?
+
+   * How many tweets mention the actress Kate McKinnon? Take into account capitalization of her name (including "MCK" and "McK").
+
+   * How many occurrences are there of the word "love"? Take into account spellings such as "LOOOVED".
+
+
+### Resources
+
+* To download tweets from Twitter, you need to have a Twitter account and then sign into the developers page. Details on the authentication procedure can be found at 
+[http://thinktostart.com/twitter-authentification-with-r/](http://thinktostart.com/twitter-authentification-with-r/)

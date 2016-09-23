@@ -1,0 +1,155 @@
+---
+title: "2015 Arrest Data for New York City"
+output:
+  html_document:
+    fig_height: 2
+    fig_width: 5
+  word_document:
+    fig_height: 2
+    fig_width: 5
+---
+Before working through this activity it is helpful to have some familiarity with `ggplot2 and making maps with ggplot2[[links needed]]`.
+
+This activity will require the following packages:
+
+```{r, message=FALSE}
+library(maptools) # creates maps and work with spatial files
+library(broom)    # assists with tidy data
+library(dplyr)    # joining data frames
+library(ggmap)    # spatial visualization with ggplot
+```
+
+
+### 1. Getting and cleaning data
+
+In this activity we create maps using data collected from the 2015 records of the New York Police Department. This information is restricted to only police stops that resulted in an actual arrest. We will be combining this data with information from the 2010 census on population and unemployment rates^1^ as well as information from schools in the area.
+
+```{r}
+Precincts.sp <- readShapeSpatial("shapefiles/precincts/precincts")
+
+Schools.sp <- readShapeSpatial("shapefiles/schools/schools")
+```
+
+
+The objects `precincts.sp` and `schools.sp` are spatial objects. As described in the `Making Maps with Shapefiles [[Reference Needed]]` packages such as `ggmap` and `ggplot2` cannot read shapefiles directly. As before, we use the `tidy` function from the `broom` package to convert the spatial objects to a data frame.
+
+
+```{r message = FALSE}
+Precincts <- tidy(Precincts.sp)
+
+# Join tidied spatial data to the descriptive precict data
+Precincts.sp$id <- rownames(Precincts.sp@data)
+Precincts <- full_join(Precincts, Precincts.sp@data, by="id")
+
+# Use dplyr to create lat and lon columns
+Schools <- Schools.sp@data
+Schools <- mutate(Schools, longitude = coords_x1, latitude = coords_x2)
+
+```
+
+
+### 2. Mapping precincts
+Each of the variables in the `Precincts` object are described in the NYPD2015 Codebook
+
+We can create a map of precinct data by using the `ggplot` package. The code below colors each police precinct by the total number of arrests in each area. 
+
+```{r}
+g <-  ggplot() + 
+      geom_polygon(data = Precincts, alpha = 0.7,
+        aes(x = long, y = lat, group = group, fill = TotalArr))
+g
+g <-  g + geom_path(data = Precincts, size = 0.3,
+          aes(x = long, y = lat, group = group)) +
+  
+      scale_fill_continuous(name="Total Arrests", low = "white", 
+          high = "darkgreen") + 
+  
+      ggtitle( "Total Arrests by Precinct" ) + 
+  
+      coord_cartesian(xlim = c(-74.3, -73.6), ylim = c(40.48, 40.94))
+g
+```
+
+The `ggmap` package allows us to easily add landmarks and geographic images to our maps by integrating information from Google Maps, OpenStreetMap, Stamen Maps or CloudMade Maps. 
+
+The code below allows us to create a background map of New York. Notice that the code for the graphic is identical to the one above except `ggplot()` is replaced by `ggmap(NewYork)`. The `get_map` function below is computationally intensive. It may take two or three tries to get it to download. If it does not work, the rest of this lab can be completed using either the `ggplot()` or the `ggmap(NewYork)` function.
+
+```{r}
+# It might take a while for R to download the map, if it succeeds at all.
+NewYork <- get_map(location = "New York", force = FALSE)
+
+p <-  ggmap(NewYork) + 
+      geom_polygon(data = Precincts, alpha = 0.7,
+        aes(x = long, y = lat, group = group, fill = TotalArr))
+p
+p <-  p + geom_path(data = Precincts, size = 0.3,
+          aes(x = long, y = lat, group = group)) +
+  
+      scale_fill_continuous(name="Total Arrests", low = "white", 
+          high = "darkgreen") + 
+  
+      ggtitle( "Total Arrests by Precinct" ) + 
+  
+      coord_cartesian(xlim = c(-74.3, -73.6), ylim = c(40.48, 40.94))
+p
+```
+
+
+
+**Questions**  
+Use either `ggplot()` or `ggmap(NewYork)` to finish the following questions.
+
+1) Create a map of New York City police precincts, where each precinct is colored by the total population of the precinct.
+2) Use `fill = TotalArr/TotalPop` to create a map of New York City police precincts, where each precinct is colored by the percent arrests in each of the precincts.
+3) By conducting a quick google search of "NYPD Police Precincts" we see that Central Park is in Precinct 22. How many people live in that precinct? How many arrests were made in that precinct?
+4) Use `dplyr` or other means to remove Precinct 22 and then recreate the map in Question 2. How does the scale change?
+
+### 3. Adding school information to the map
+The `Schools` data frame contains multiple variables that are described in the NYPD2015 Codebook
+
+To plot schools as points onto the map, we only need to add a `geom_point` function. Note that to properly visualize this large number of points, you will need to use the `Zoom` option when viewing the graph within RStudio.
+```{r}
+# Notice that this code will work for either g (ggplot) or p (get_map)
+g <-  g + geom_point(data = Schools,
+        aes(x = longitude, y = latitude, color = MAT_Mean, 
+          size = TotalStdn)) +
+  
+      scale_color_gradient(low = "yellow", high = "red", 
+        trans = "sqrt") +
+  
+      ggtitle( "NYPD Precinct and School Information" ) + 
+      
+      coord_cartesian(xlim = c(-74.3, -73.6), ylim = c(40.48, 40.94))
+g
+```
+
+**Questions**
+
+5) Notice that in the above graph several of the schools are colored grey. These are schools where the `MAT_Mean` values are missing. The schools with missing `TotalStdn` have automatically been removed from the plot. Determine how many missing values exist in the `MAT_Mean` column and how many missing values exist in the `TotalStdn` column. 
+6) Create a new graph similar to the one above that only shows elementary schools with non missing mean math scores (i.e. `MAT_Mean` values).
+
+### 5. On your own
+
+**Option 1:** There has been some controversy around New York City's Stop-and-Frisk policies, which gave police officers the right to stop, search, or arrest any suspicious person with reasonable grounds for action.
+The article [Police stop more than 1 million people on the street]( http://www.nbcnews.com/id/33230464/#.VyttSIQrLIU), states that "Civil liberties groups say the practice is racist and fails to deter crime. Police departments maintain it is a necessary tool that turns up illegal weapons and drugs and prevents more serious crime." Page 10 of the the [New York CIty Bar Association Report on the NYPD's Stop-and Frisk Policy]( http://www2.nycbar.org/pdf/report/uploads/20072495-StopFriskReport.pdf) states that, "The NYPD has defended the.policy on the grounds that most stops are conducted in high-crime neighborhoods with high concentrations of people of color."
+
+Create a graphic showing the percentage of people of color in each precinct. Create another graph representing arrests in each precinct. Finally create a one page report, including graphics, that addresses the issues stated in the above NBC article. The article was written in 2009. Does the Precincts data, which only has 2015 arrest data, provide support for either the civil liberties groups or for the NYPD?
+
+**Option 2:** In July of 2015, the radio show [This American Life](http://www.thisamericanlife.org/radio-archives/episode/562/the-problem-we-all-live-with) presented an episode that discussed how public education is critically related to crime rates. 
+
+Create graphics and a one page report to evaluate any relationship between quality of education, (such as the school's average math or English scores) and crime rates.
+
+
+
+### Additional Resources
+
+ggmap Cheat Sheet: https://www.nceas.ucsb.edu/~frazier/RSpatialGuides/ggmap/ggmapCheatsheet.pdf
+
+ggmap: Spatial visualization with ggplot: https://journal.r-project.org/archive/2013-1/kahle-wickham.pdf
+
+
+
+---------
+<sub>
+^1^ Its important to recognise that census tracts and school districs do not directly fit with police precincts. The census data in this lab has been modified to precinct data, but the information is based upon estimates, not exact values.  
+</sub>

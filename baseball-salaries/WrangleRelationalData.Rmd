@@ -1,0 +1,328 @@
+---
+title: "Wrangling Relational Data in R"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+<!-- ### Required R packages -->
+
+<!-- * `RSQLite` -->
+
+
+### Overview
+
+For years there has been much discussion on whether Major League Baseball (MLB) needs a salary cap, as some professional baseball players are being signed to massive multiyear contracts---e.g., Clayton Kershaw will make $33M per year until 2020! In this case study we won't discuss the need for, or lack of, a salary cap in MLB, rather we will investigate how team payroll is related to team performance. More specifically, is a team's payroll related to their win-loss record, reaching the playoffs, or winning the World Series? [Sean Lahman](http://www.seanlahman.com/about/), a database journalist maintains a database containing performance metrics for MLB players since 1871, as well as supplementary information such as salaries and franchise information. 
+
+
+Lahman's database is what we refer to as a relational database because it is organized in a way that makes the relationships between its data tables explicit. It is common practice to store relational data in a relational database management system (RDMS).There are numerous RDMSs and they all speak the structured query language (SQL). Luckily, we can use R and `dplyr` to interface with many RDMSs without having to learn SQL or get into the nitty-gritty details of the databases. In this case study Lahman's baseball database is stored in the SQLite (a very popular and open-source RDMS) database **lahman.sqlite**.
+
+
+To begin, load the necessary packages for this case study.
+
+```{r message=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+```
+
+
+### Connecting to a database
+
+In order to interface with the **lahman.sqlite** database you need to know the file path of the SQLite database (if the database is not in your working directory). Open the connection between R and the database using the `src_sqlite` function found in the **dplyr** package, specifying the file path of the database (which is simply the file name if you have changed your working directory to the folder containing the SQLite database) and the OK to create a table:
+
+```{r}
+lahman_db <- src_sqlite("data/lahman.sqlite", create = TRUE)
+```
+
+Typing the name of the database into the console reveals the RDMS version (`src`) and what data tables are contained in the database (`tbls`).
+
+```{r}
+lahman_db
+```
+
+Now that we have an open connection to Lahman's database we can proceed with our investigation.
+
+
+### Calculating team payroll
+
+The first step in determining how team payroll and performance are related is to calculate the team payrolls for each season. 
+<!-- To do this, we must extract the **salaries** data table from **lahman_db** and aggregate salaries by team and year. -->
+
+To select the **salaries** data table from the **lahman_db** database, use the `tbl` function found in the **dplyr** package:
+
+```{r}
+salaries_tbl <- tbl(lahman_db, "salaries")
+head(salaries_tbl)
+```
+
+Next, aggregate the player salaries by team (`teamID`) and year (`yearID`) to produce team payrolls for each season.
+
+```{r}
+salaries_grouped <- group_by(salaries_tbl, teamID, yearID)
+payroll <- summarize(salaries_grouped, payroll = sum(salary))
+head(payroll)
+```
+
+At this point it's important to note a few technical details about how `dplyr` talks to a database:
+
+`dplyr` does not actually pull data into R until you ask for it. This allows `dplyr` to perform all of the manipulations at once, which is more efficient. Consequently, commands like `summary(payroll)` and `payroll$payroll` do not work as expected.
+
+
+The `collect` command tells `dplyr` to pull data into R, allowing us to create a data frame in R that we can work with.
+
+```{r}
+payroll <- collect(payroll)
+head(payroll)
+```
+
+Boxplots of team payroll over the years suggests that payroll is increasing over time, but we have not yet adjusted for inflation.
+
+
+```{r, fig.height=4, fig.width=8}
+ggplot(data = payroll, mapping = aes(x = factor(yearID), y = payroll/1e6)) + 
+  geom_boxplot() + 
+  labs(x = "year", y = "payroll (millions)") + 
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+
+To convert all the payrolls to 2016 dollars, we load the **inflation.csv** data set which contains the necessary multipliers for each year. (This information is obtained from the [Bureau of Labor Statistics](http://data.bls.gov/cgi-bin/cpicalc.pl).)
+
+```{r}
+inflation <- read.csv("data/inflation.csv")
+```
+
+The easiest way to adjust payroll for inflation is to join the **payroll** and **inflation** data frames and calculate a new column as the product of `payroll` and `multiplier`.
+
+```{r}
+payroll <- left_join(payroll, inflation, by = c("yearID" = "year"))
+payroll <- mutate(payroll, adj.payroll = payroll * multiplier)
+```
+
+
+Replotting the data we still see the increase in payrolls over time, though they appear to somewhat level off in recent years. Additionally, both the adjusted and unadjusted plots reveal far greater variability in payrolls in the 2000s and 2010s than the 1980s and 1990s.
+
+
+```{r, fig.height=4, fig.width=8}
+ggplot(data = payroll, mapping = aes(x = factor(yearID), y = adj.payroll/1e6)) + 
+  geom_boxplot() + 
+  labs(x = "year", y = "payroll (millions)") + 
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+
+### Comparing payroll between leagues
+
+So far we have looked at payroll for the entire MLB, which is broken down into two leagues: the American League (AL) and the National League (NL). Next, we investigate whether payroll is similar across the two leagues.
+
+
+To begin, we must pull in data from the **teams** data table in the **lahman_db** database and join it with **payroll**. The **teams** data table contains information about a team's record, playoff wins, and performance statistics. (See Lahman's codebook for more details.)
+
+```{r}
+teams_tbl <- collect(tbl(lahman_db, "teams"))
+head(teams_tbl)
+```
+
+```{r}
+payroll_teams <- left_join(payroll, teams_tbl, by = c("teamID", "yearID"))
+```
+
+Now that we have combined the **payroll** data with the team statistics, we can easily render side-by-side boxplots comparing team payroll between the AL and NL over the years.
+
+
+```{r, fig.height=4, fig.width=8}
+ggplot(data = payroll_teams) + 
+  geom_boxplot(mapping = aes(x = factor(yearID), y = adj.payroll/1e6, fill = lgID), alpha = 0.7) + 
+  labs(x = "year", y = "payroll (millions)") +
+  theme(axis.text.x = element_text(angle = 90)) +
+  scale_fill_manual("league", values = c("darkorange", "deepskyblue"))
+```
+
+
+The boxplots reveal no systematic differences between the leagues.
+
+
+### Payroll and wins
+
+Now that we have a basic understanding of the distribution of team payroll over the years, we can investigate whether payroll helps explain a team's Win-Loss record with a scatterplot with a linear smoother.
+
+
+```{r, fig.height=4, fig.width=4}
+ggplot(data = payroll_teams, aes(x = adj.payroll/1e6, y = W)) + 
+  geom_point() + 
+  geom_smooth(method = "lm") + 
+  labs(x = "payroll (millions)", y = "wins")
+```
+
+
+The scatterplot reveals that teams with higher payrolls win more games, on average; however, there is a substantial amount of variability in the scatterplot!
+
+To further explore this trend, we zoom into the individual seasons by faceting the scatterplot by season.
+
+
+```{r, fig.height=8, fig.width=8}
+ggplot(data = payroll_teams, aes(x = adj.payroll/1e6, y = W)) + 
+  geom_point() + 
+  geom_smooth(method = "lm") + 
+  facet_wrap(~ yearID, ncol = 5) + 
+  labs(x = "payroll (millions)", y = "wins")
+```
+
+
+The faceted scatterplot reveals that this positive linear trend is present in most seasons, but not all. In some seasons there appears to be no trend (1987, 1990, and 1992), and in many the trend is so slight that we need to be cautious with our interpretations (this is the case for recent years).
+
+
+### Payroll and the playoffs
+
+While payroll may not be especially useful at predicting a team's Win-Loss record, it could still be revealing with regard to playoff berths. To explore this we need to pull in postseason information, which is contained in **seriespost**.
+
+```{r}
+postseason <- collect(tbl(lahman_db, "seriespost"))
+head(postseason)
+```
+
+The **postseason** data frame contains what team won and lost each postseason game in each season. While this is interesting, we need to create a data set containing the teams that made the playoffs in each season. To do this we'll focus on four columns:
+
+```{r}
+postseason <- select(postseason, yearID, teamIDwinner, teamIDloser)
+```
+
+Next, we use `gather` to collapse the `teamIDwinner` and `teamIDloser` columns into `teamID` and `win` columns.
+
+```{r}
+postseason <- gather(postseason, key = win, value = teamID, teamIDwinner, teamIDloser)
+```
+
+Since we are not interested in whether a team won a specific series in the playoffs---this information is already in **teams_tbl**---we drop the `win` column and summarize the data set so that each team has only one entry per season.
+
+```{r}
+postseason <- select(postseason,-win)
+postseason_grouped <- group_by(postseason, yearID, teamID) 
+playoffs <- summarize(postseason_grouped, playoff = "Y")
+head(playoffs)
+```
+
+Next, we join **payroll_teams** and **playoffs** for plotting.
+
+```{r}
+payroll_postseason <- left_join(payroll_teams, playoffs, by = c("yearID", "teamID"))
+```
+
+`left_join` introduces `NA`s to fill in these missing values in the `playoff` column (teams that did not make the playoffs). The following command replaces these `NA`s with `N` so that the column contains only `Y` and `N` values.
+
+```{r}
+payroll_postseason <- 
+  mutate(payroll_postseason, 
+         playoff = ifelse(is.na(playoff), "N", "Y"))
+```
+
+
+Using the new **playoffs** data and the **payroll_postseason** data we can easily create a dotplot of the payroll by season, using color to indicate whether a team made the playoffs.
+
+
+```{r, fig.height=4, fig.width=8}
+ggplot(data = payroll_postseason, aes(x = yearID, y = adj.payroll/1e6, color = playoff)) + 
+  geom_point(data = filter(payroll_postseason, playoff == "N")) + 
+  geom_point(data = filter(payroll_postseason, playoff == "Y")) + 
+  labs(x = "payroll (millions)", y = "wins") + 
+  scale_color_manual("Playoff berth?", values = c("gray80", "darkorange"))
+```
+
+
+The dotplot reveals that teams with high payrolls often make the playoffs, as do teams with moderate/low payrolls. Teams with the lowest payrolls, however, have not made the playoffs.
+
+<!-- While payroll does not seem to be the best predictor of a playoff berth, perhaps it provides more information about making specific rounds of the playoffs. For example, perhaps teams with lower payrolls tend to clinch a wild card spot. -->
+
+<!-- ```{r} -->
+<!-- payroll_postseason <- mutate(payroll_postseason, WCgame = ifelse(playoff == "Y" & )) -->
+<!-- ``` -->
+
+
+### Payroll and the World Series
+
+While payroll does not seem to be the best predictor of a playoff berth, perhaps it better predicts the winner of the World Series. The winner of the World Series is specified in the `WSWin` column. 
+
+
+```{r, fig.height=4, fig.width=8}
+ggplot(data = payroll_teams, aes(x = yearID, y = adj.payroll/1e6)) + 
+  geom_point(aes(color = WSWin)) + 
+  labs(x = "season", y = "payroll (millions)")
+```
+
+
+The above dotplot needs to be refined, but one thing to notice is that the `WSWin` column has blanks for the 1994 season. Why? A quick Wikipedia search reveals that there was a player strike that began on August 12, 1994, resulting in the cancellation of the rest of the season. Consequently, no teams made the playoffs in 1994 and the color in the plot needs to reflect this. To make this change, we first need to change the blanks to `N`s.
+
+
+```{r}
+payroll_postseason <- mutate(payroll_postseason, WSWin = ifelse(WSWin == "Y", "Y", "N"))
+```
+
+Next, we'll tweak the colors and legend title for a publication quality plot.
+
+
+```{r, fig.height=4, fig.width=8}
+ggplot(data = payroll_postseason, aes(x = yearID, y = adj.payroll/1e6, color = WSWin)) + 
+  geom_point(data = filter(payroll_postseason, WSWin == "N")) + 
+  geom_point(data = filter(payroll_postseason, WSWin == "Y")) + 
+  labs(x = "season", y = "payroll (millions)") + 
+  scale_color_manual("World Series\nChampion?", values = c("gray80", "darkorange"))
+```
+
+The dotplot reveals that while there have been many world series winners from teams with high payrolls, there have been plenty with moderate payrolls. There does, however, seem to be some indication that teams need to spend a bit of money to win the World Series, as very low payroll teams are not winning the world series.
+
+```{r include=FALSE, eval=FALSE}
+# Parallel coordinate plot option
+library(GGally)
+ggparcoord(data = payroll_postseason, columns = c(5, 6, 7, 12, 14:17), alpha = I(0.1))
+
+# Dotplot option
+library(ggplot2)
+ggplot(data = salary_wins) + 
+  geom_point(mapping = aes(x = year, y = wins, colour = payroll)) + 
+  scale_y_log10() + 
+  scale_color_gradient(low = "#EFF3FF", high = "#084594")
+
+# Facetted scatterplot with smoother option
+ggplot(data = salary_wins) + 
+  geom_point(mapping = aes(x = payroll, y = wins)) + 
+  geom_smooth(mapping = aes(x = payroll, y = wins), method = "lm") +
+  scale_x_log10() +
+  facet_wrap(facets = ~ year, ncol = 6)
+
+```
+
+
+### Looking back, looking forward
+
+In this case study we have investigated the distribution of team payroll in the MLB from 1985 to 2015, as well as its association with playoff berths and winning the world series. To do this we have:
+
+* extracted a data table from a SQLite database using the `src_sqlite` and `tbl` commands from the `dplyr` package.
+* manipulated and cleaned data sets using the `dplyr` and `tidyr` packages.
+* used graphics to explore distributions and answer questions.
+
+There is more that can be done using SQLite, but it requires you to learn SQL. With the tools available in `dplyr` you will be able to tackle many problems you might encounter. It's important to note that there are other RDMSs other than SQLite that `dplyr` can interface with, including PostgreSQL, MySQL, and MariaSQL (see this [dplyr vignette](https://cran.r-project.org/web/packages/dplyr/vignettes/databases.html) for more information). The key difference is that `src_sqlite` is replaced by the appropriate `src` command.
+
+
+### On Your Own
+
+The **payroll_postseason** data table created above contains the variables `WCWin` and `DivWin` which indicate whether a team won a wild card or divisional playoff game (`Y`) or not (`N`). 
+
+a. Use the `mutate` function in the `dplyr` package to fill in `N`s for the blanks in the `WCWin` and `DivWin` columns. (*Note*: If a team did not reach the playoffs, then its entry for `WCWin` and `DivWin` will be blank.)
+b. Create a dotplot of payroll by year, highlighting teams that won the wild card round. Briefly summarize your findings.
+c. Create a dotplot of payroll by year, highlighting teams that won their division. Briefly summarize your findings.
+
+<!-- 2. The **euro_database.sqlite** contains information on more than 25,000 European soccer matches along with player and team information. While information about specific matches is interesting, fans are often interested in league tables that display the overall standings. Complete the following steps to create a league table for the 2015-2016 season of English Premier League. -->
+<!--     a. Load the **euro_database.sqlite** into R. -->
+<!--     b. Pull the **teams** data table in R. -->
+<!--     c. Pull the  -->
+
+#### Sources
+
+Lahman, S. (2016) Lahman’s Baseball Database, 1871-2015, Main page, http://seanlahman.com/baseball-archive/statistics/
+
+Lahman, S. (2016) Lahman’s Baseball Database, 1871-2015, v. 2016, Comma-delimited version, http://seanlahman.com/files/database/lahman2012-csv.zip
+
+Hadley Wickham and Romain Francois (2016). dplyr: A Grammar of Data Manipulation. R package version 0.5.0. https://CRAN.R-project.org/package=dplyr
+
