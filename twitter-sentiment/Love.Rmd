@@ -147,7 +147,7 @@ out9[c(12, 195)]
 2. How many mentions (of specific users) are there in the `love` tweets? Mentions are prefaced by the "at" symbol, for example, `@username`.
 
 3. The third installment of the movie franchise "Ghostbusters" was released on July 15, 2016. 
-Import (via 'scan') the file **Ghostbusters.txt88 that has 5000 tweets downloaded from Twitter on July 18, 2016, based on a search of the word "ghostbusters". 
+Import (via 'scan') the file **Ghostbusters.txt** that has 5000 tweets downloaded from Twitter on July 18, 2016, based on a search of the word "ghostbusters". 
 
 
    * Clean up the data set by removing the unicode values.
