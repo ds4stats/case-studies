@@ -1,6 +1,6 @@
 ---
 title: "Oklahoma Quakes"
-output: word_document
+output: html_document
 editor_options: 
   chunk_output_type: console
 ---
