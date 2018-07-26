@@ -1,6 +1,8 @@
 ---
 title: "Oklahoma Quakes"
-output: html_document
+output: word_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 The number of earthquakes in Oklahoma has increased in the past decade. In fact, scientists now claim that Oklahoma surpasses California in being the "earthquake capital of the world!"
@@ -14,7 +16,7 @@ We will utilize several packages for this lab.
 
 
 ```{r, message = FALSE}
-for (package in c("stringr", "lubridate", "dplyr", "ggplot2")){
+for (package in c("stringr", "lubridate", "dplyr", "ggplot2", "ggformula")){
   library(package, character.only = TRUE)
 }
 
@@ -25,7 +27,7 @@ The data are in the file **OKEarthquakes.csv**.
 
 
 ```{r}
-OKquakes <- read.csv("data/OKEarthquakes.csv", stringsAsFactors = FALSE)
+OKquakes <- read.csv("OKEarthquakes.csv", stringsAsFactors = FALSE)
 head(OKquakes)
 summary(OKquakes)
 ```
@@ -96,7 +98,7 @@ We will use the `ggplot2` package to visualize the table just created:
 
 
 ```{r}
-ggplot(OK, aes(x=year)) + geom_bar(aes(fill = type))
+gf_bar( ~year, data = OK, fill = ~type)
 ```
 
 
@@ -104,7 +106,7 @@ Has there been a change in the depth of these earthquakes?
 
 
 ```{r}
-ggplot(OK, aes(x=year, y = depth)) + geom_point()
+gf_point(depth ~ year, data = OK)
 ```
 
 We can definitely see the change in variability of the depth of earthquakes starting in 2010.
@@ -116,28 +118,27 @@ Where are these earthquakes in Oklahoma occurring? We have information on the ex
 ```{r, message = FALSE}
 OKmap <- map_data("state", region="Oklahoma")
 
-p <- ggplot(OK) + geom_polygon(data = OKmap, aes(x=long, y = lat), fill="wheat")
-p
+gf_polygon(lat ~ long, data = OKmap, fill = "wheat")
 ```
 
 Next, we add the location of the earthquakes and color-code these by the year of occurrence.
 
 
 ```{r}
-p + geom_point(aes(x = longitude, y = latitude, color = year))
+gf_polygon(lat ~ long, data = OKmap, fill = "wheat") %>% 
+  gf_point(latitude ~ longitude, data = OK, color = ~year)
+
 ```
 
-Another way to incorporate the year data is by using `facet_wrap`:
+Another way to incorporate the year data is by using facets:
 
 
 ```{r}
-p + geom_point(aes(x = longitude, y = latitude), size = .8) + facet_wrap(  ~ year) + labs(x = "longitude", y = "latitude")
-
+gf_polygon(lat ~ long, data = OKmap, fill = "wheat") %>% 
+  gf_point(latitude ~ longitude |year, data = OK)
 ```
 
 ### On Your own
-
-### 
 
 1. The package `RColorBrewer` provides a sequential color palette. Investigate this palette and recreate the maps using one of these.
 
@@ -152,3 +153,4 @@ p + geom_point(aes(x = longitude, y = latitude), size = .8) + facet_wrap(  ~ yea
    + Is there a pattern to where earthquakes in California occur?
 
  + How severe have the earthquakes in California been? Are most of minor severity?
+
