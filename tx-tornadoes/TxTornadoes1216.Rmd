@@ -1,6 +1,6 @@
 ---
 title: "Tornadoes in Texas 2012-2016"
-output: word_document
+output: html_document
 editor_options: 
   chunk_output_type: console
 ---
